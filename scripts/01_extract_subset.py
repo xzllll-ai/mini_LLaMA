@@ -1,6 +1,6 @@
 """
 01_extract_subset.py
-从 mobvoi_seq_monkey_classical_chs_open_corpus 中提取 ~50 位著名诗人的 (古诗,白话) 平行对
+从 mobvoi_seq_monkey_classical_chs_open_corpu 中提取 ~50 位著名诗人的 (古诗,白话) 平行对
 """
 import json
 import os
