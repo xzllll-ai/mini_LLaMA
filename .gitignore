@@ -1,0 +1,28 @@
+# 原始数据集
+*.tar.bz2
+*.tar.gz
+*.zip
+*.7z
+
+# 模型权重
+checkpoints/
+*.safetensors
+*.bin
+*.pt
+*.pth
+*.ckpt
+
+# 中间训练输出
+logs/
+*.log
+nohup.out
+
+# 临时/缓存
+__pycache__/
+*.pyc
+.DS_Store
+tmp_extract/
+
+# Tokenizer 训练中间文件
+tokenizer/corpus.txt
+data/pretrain_corpus.txt
