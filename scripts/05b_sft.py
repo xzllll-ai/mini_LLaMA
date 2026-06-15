@@ -53,8 +53,8 @@ EPOCHS = 5
 LOG_EVERY = 50
 SAVE_EVERY = 1500
 
-OUTPUT_DIR = "/apps/users/xzl/test/checkpoints/two_stage/stage2"
-PRETRAINED_DIR = "/apps/users/xzl/test/checkpoints/two_stage/stage1/final"
+OUTPUT_DIR = "/apps/users/xzl/mini_LLaMA/checkpoints/two_stage/stage2"
+PRETRAINED_DIR = "/apps/users/xzl/mini_LLaMA/checkpoints/two_stage/stage1/final"
 
 
 # =============== 分布式辅助 ===============
@@ -266,8 +266,8 @@ def train(rank, world_size, local_rank, args):
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--data_jsonl", default="/apps/users/xzl/test/data/poetry_translation_pairs.jsonl")
-    parser.add_argument("--spm_model", default="/apps/users/xzl/test/tokenizer/poetry_spm.model")
+    parser.add_argument("--data_jsonl", default="/apps/users/xzl/mini_LLaMA/data/poetry_translation_pairs.jsonl")
+    parser.add_argument("--spm_model", default="/apps/users/xzl/mini_LLaMA/tokenizer/poetry_spm.model")
     parser.add_argument("--pretrained_model", default=PRETRAINED_DIR)
     args = parser.parse_args()
 

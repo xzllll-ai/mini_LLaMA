@@ -24,7 +24,7 @@ def build_prompt(original, sp, with_response_prefix=True):
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--model_dir", default="/apps/users/xzl/test/checkpoints/poetry_llm_0_1b/final")
+    parser.add_argument("--model_dir", default="/apps/users/xzl/mini_LLaMA/checkpoints/two_stage/stage2/final")
     parser.add_argument("--interactive", action="store_true")
     parser.add_argument("--poem", type=str, default=None)
     parser.add_argument("--max_new_tokens", type=int, default=200)

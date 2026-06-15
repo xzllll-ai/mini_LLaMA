@@ -12,9 +12,9 @@
 #   CUDA_VISIBLE_DEVICES=5,6 # 可选: 指定具体 GPU，需放在 bash 命令前
 
 set -e
-cd /apps/users/xzl/test
+cd /apps/users/xzl/mini_LLaMA
 PY=/apps/users/xzl/miniconda3/envs/qwen3vl/bin/python
-LOG_DIR=/apps/users/xzl/test/logs
+LOG_DIR=/apps/users/xzl/mini_LLaMA/logs
 mkdir -p "$LOG_DIR"
 
 GPU_COUNT=${GPU_COUNT:-2}
@@ -27,7 +27,7 @@ run_stage1() {
     echo "  $(date)"
     echo "==========================================="
     torchrun --standalone --nproc_per_node=$GPU_COUNT \
-        /apps/users/xzl/test/scripts/05a_pretrain.py \
+        /apps/users/xzl/mini_LLaMA/scripts/05a_pretrain.py \
         2>&1 | tee "$LOG_DIR/stage1.log"
 }
 
@@ -37,14 +37,14 @@ run_stage2() {
     echo "  CUDA_VISIBLE_DEVICES=${CUDA_VISIBLE_DEVICES:-<all>}"
     echo "  $(date)"
     echo "==========================================="
-    if [ ! -d "/apps/users/xzl/test/checkpoints/two_stage/stage1/final" ]; then
+    if [ ! -d "/apps/users/xzl/mini_LLaMA/checkpoints/two_stage/stage1/final" ]; then
         echo "❌ 错误: 找不到 Stage 1 模型"
-        echo "   /apps/users/xzl/test/checkpoints/two_stage/stage1/final"
+        echo "   /apps/users/xzl/mini_LLaMA/checkpoints/two_stage/stage1/final"
         echo "   请先跑 stage1"
         exit 1
     fi
     torchrun --standalone --nproc_per_node=$GPU_COUNT \
-        /apps/users/xzl/test/scripts/05b_sft.py \
+        /apps/users/xzl/mini_LLaMA/scripts/05b_sft.py \
         2>&1 | tee "$LOG_DIR/stage2.log"
 }
 
@@ -60,11 +60,11 @@ case "$STAGE" in
         run_stage2
         echo ""
         echo "✅ 两阶段训练完成!"
-        echo "   预训练模型: /apps/users/xzl/test/checkpoints/two_stage/stage1/final"
-        echo "   SFT 模型:   /apps/users/xzl/test/checkpoints/two_stage/stage2/final"
+        echo "   预训练模型: /apps/users/xzl/mini_LLaMA/checkpoints/two_stage/stage1/final"
+        echo "   SFT 模型:   /apps/users/xzl/mini_LLaMA/checkpoints/two_stage/stage2/final"
         echo ""
         echo "下一步推理:"
-        echo "  $PY /apps/users/xzl/test/scripts/04_infer.py \\"
-        echo "    --model_dir /apps/users/xzl/test/checkpoints/two_stage/stage2/final"
+        echo "  $PY /apps/users/xzl/mini_LLaMA/scripts/04_infer.py \\"
+        echo "    --model_dir /apps/users/xzl/mini_LLaMA/checkpoints/two_stage/stage2/final"
         ;;
 esac
