@@ -56,6 +56,7 @@ def main():
         max_sentence_length=2048,
         shuffle_input_sentence=True,
         byte_fallback=True,           # 未知字回退到 byte
+        hard_vocab_limit=False,       # 小语料/byte fallback 时避免因精确 vocab 数失败
         # 标注控制: 不需要
     )
     print(f"训练完成: {MODEL_PREFIX}.model / .vocab")

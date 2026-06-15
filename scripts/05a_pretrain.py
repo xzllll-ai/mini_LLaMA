@@ -3,15 +3,9 @@
 Stage 1 预训练：从零训练古诗+白话 LM
 torchrun --standalone --nproc_per_node=2 scripts/05a_pretrain.py
 """
-# =============== 指定 GPU（必须放在 import torch 之前！） ===============
-# 改这里切换用哪几张卡。空字符串 = 用所有可见卡
-# 格式: "0,1" 用 0 和 1; "2,3" 用 2 和 3; "0,2,3" 用三张
-import os
-os.environ["CUDA_VISIBLE_DEVICES"] = "5,6"
-# ===================================================================
-
 import argparse
 import json
+import math
 import os
 import random
 import shutil
@@ -106,8 +100,8 @@ class PretrainDataset(Dataset):
         return len(self.samples)
 
     def __getitem__(self, idx):
-        ids = self.sp.encode_as_ids(self.samples[idx])
-        ids = ids[:self.max_seq_len]
+        body_ids = self.sp.encode_as_ids(self.samples[idx])
+        ids = [self.sp.bos_id()] + body_ids[:self.max_seq_len - 2] + [self.sp.eos_id()]
         return torch.tensor(ids, dtype=torch.long), torch.tensor(ids, dtype=torch.long)
 
 
@@ -193,7 +187,7 @@ def train(rank, world_size, local_rank, args):
     optimizer = torch.optim.AdamW(
         model.parameters(), lr=LR, betas=(0.9, 0.95), eps=1e-8, weight_decay=WEIGHT_DECAY,
     )
-    steps_per_epoch = len(loader) // GRAD_ACCUM
+    steps_per_epoch = math.ceil(len(loader) / GRAD_ACCUM)
     total_steps = steps_per_epoch * EPOCHS
     scheduler = get_cosine_schedule_with_warmup(optimizer, WARMUP_STEPS, total_steps)
     log(rank, f"每 epoch 步数: {steps_per_epoch} | 总步数: {total_steps}")
@@ -202,19 +196,25 @@ def train(rank, world_size, local_rank, args):
     model.train()
     step = 0
     running_loss = 0.0
+    running_batches = 0
     t0 = time.time()
 
     for epoch in range(EPOCHS):
         sampler.set_epoch(epoch)
         for batch_idx, batch in enumerate(loader):
             batch = {k: v.to(local_rank, non_blocking=True) for k, v in batch.items()}
+            window_start = (batch_idx // GRAD_ACCUM) * GRAD_ACCUM
+            window_end = min(window_start + GRAD_ACCUM, len(loader))
+            accum_steps = window_end - window_start
             with torch.amp.autocast("cuda", dtype=torch.bfloat16):
                 out = model(**batch)
-                loss = out.loss / GRAD_ACCUM
+                raw_loss = out.loss
+                loss = raw_loss / accum_steps
             loss.backward()
-            running_loss += loss.item() * GRAD_ACCUM
+            running_loss += raw_loss.item()
+            running_batches += 1
 
-            if (batch_idx + 1) % GRAD_ACCUM == 0:
+            if batch_idx + 1 == window_end:
                 torch.nn.utils.clip_grad_norm_(model.parameters(), GRAD_CLIP)
                 optimizer.step()
                 scheduler.step()
@@ -222,7 +222,7 @@ def train(rank, world_size, local_rank, args):
                 step += 1
 
                 if is_main(rank) and step % LOG_EVERY == 0:
-                    avg_loss = running_loss / (LOG_EVERY * GRAD_ACCUM)
+                    avg_loss = running_loss / max(1, running_batches)
                     lr_now = scheduler.get_last_lr()[0]
                     elapsed = time.time() - t0
                     sps = (step * BATCH_SIZE * GRAD_ACCUM * world_size) / elapsed
@@ -233,6 +233,7 @@ def train(rank, world_size, local_rank, args):
                         f"speed {sps:.0f} samples/s  ETA {eta_sec / 60:.1f}min"
                     )
                     running_loss = 0.0
+                    running_batches = 0
 
                 if is_main(rank) and (step % SAVE_EVERY == 0 or step == total_steps):
                     ckpt = os.path.join(OUTPUT_DIR, f"step_{step}")

@@ -9,11 +9,6 @@ import torch
 from transformers import LlamaForCausalLM
 from sentencepiece import SentencePieceProcessor
 
-# =============== 指定 GPU（必须放在 import torch 之前！） ===============
-import os
-os.environ["CUDA_VISIBLE_DEVICES"] = "4,5"
-# ===================================================================
-
 # =============== Prompt 模板 (必须与 05b_sft.py 训练时一致) ===============
 SYSTEM_PROMPT = "你是一位古诗翻译专家，请把用户给出的古诗词翻译成通俗易懂的现代白话文。"
 INSTRUCTION_TPL = "请翻译以下古诗词：\n{original}"
@@ -22,7 +17,7 @@ INSTRUCTION_TPL = "请翻译以下古诗词：\n{original}"
 def build_prompt(original):
     """构造 SFT 阶段的 prompt,匹配训练时的输入格式"""
     text = (
-        f"<s>{SYSTEM_PROMPT}\n"
+        f"{SYSTEM_PROMPT}\n"
         f"user\n{INSTRUCTION_TPL.format(original=original)}\n"
         f"assistant\n"
     )
@@ -50,7 +45,7 @@ def main():
     # 加载模型
     print(f"加载模型: {args.model_dir}")
     model = LlamaForCausalLM.from_pretrained(
-        args.model_dir, dtype=torch.bfloat16, device_map="cuda",
+        args.model_dir, torch_dtype=torch.bfloat16, device_map="cuda",
     )
     model.eval()
     print(f"模型加载完成, 参数量: {sum(p.numel() for p in model.parameters()) / 1e6:.1f}M\n")
@@ -73,7 +68,7 @@ def main():
 
     for i, poem in enumerate(samples, 1):
         prompt = build_prompt(poem)
-        ids = sp.encode_as_ids(prompt)
+        ids = [sp.bos_id()] + sp.encode_as_ids(prompt)
         input_ids = torch.tensor([ids], dtype=torch.long, device="cuda")
 
         with torch.no_grad():
