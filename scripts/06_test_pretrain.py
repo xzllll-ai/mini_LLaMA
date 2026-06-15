@@ -29,7 +29,7 @@ def main():
     # 加载模型
     print(f"加载模型: {args.model_dir}")
     model = LlamaForCausalLM.from_pretrained(
-        args.model_dir, dtype=torch.bfloat16, device_map="cuda",
+        args.model_dir, torch_dtype=torch.bfloat16, device_map="cuda",
     )
     model.eval()
 
@@ -50,7 +50,7 @@ def main():
     for poem in samples:
         # 用 \n 触发续写(训练时 original 后面接 \n 然后是 translation)
         prompt = f"{poem}\n"
-        ids = sp.encode_as_ids(prompt)
+        ids = [sp.bos_id()] + sp.encode_as_ids(prompt)
         input_ids = torch.tensor([ids], dtype=torch.long, device="cuda")
         with torch.no_grad():
             out = model.generate(

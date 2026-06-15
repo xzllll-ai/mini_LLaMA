@@ -8,7 +8,8 @@
 #   bash run_two_stage.sh stage2    # 只跑 SFT（需先有 stage1）
 #
 # 环境变量:
-#   GPU_COUNT=2  # 用几张卡，默认 2
+#   GPU_COUNT=2              # 用几张卡，默认 2
+#   CUDA_VISIBLE_DEVICES=5,6 # 可选: 指定具体 GPU，需放在 bash 命令前
 
 set -e
 cd /apps/users/xzl/test
@@ -22,6 +23,7 @@ STAGE="${1:-both}"
 run_stage1() {
     echo "==========================================="
     echo "  Stage 1: 预训练 (从头, ${GPU_COUNT} 卡 DDP)"
+    echo "  CUDA_VISIBLE_DEVICES=${CUDA_VISIBLE_DEVICES:-<all>}"
     echo "  $(date)"
     echo "==========================================="
     torchrun --standalone --nproc_per_node=$GPU_COUNT \
@@ -32,6 +34,7 @@ run_stage1() {
 run_stage2() {
     echo "==========================================="
     echo "  Stage 2: SFT (基于 Stage 1, ${GPU_COUNT} 卡 DDP)"
+    echo "  CUDA_VISIBLE_DEVICES=${CUDA_VISIBLE_DEVICES:-<all>}"
     echo "  $(date)"
     echo "==========================================="
     if [ ! -d "/apps/users/xzl/test/checkpoints/two_stage/stage1/final" ]; then

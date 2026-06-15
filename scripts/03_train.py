@@ -1,6 +1,6 @@
 """
 03_train.py
-从零训练一个 ~0.1B 的古诗翻译模型
+从零训练一个 ~0.1B 的古诗翻译 LLaMA 模型
 单卡 L40 (46G) 训练 bf16，单阶段 SFT
 """
 import json
@@ -66,11 +66,11 @@ class PoetryDataset(Dataset):
                 if max_samples and i >= max_samples:
                     break
                 d = json.loads(line)
-                # 拼接格式: <s>system\n{q}\nuser\n{ins}\nassistant\n{ans}</s>
+                # 拼接格式: bos + system/user/assistant + eos
                 text = (
-                    f"<s>{SYSTEM_PROMPT}\n"
+                    f"{SYSTEM_PROMPT}\n"
                     f"user\n{INSTRUCTION.format(original=d['original'])}\n"
-                    f"assistant\n{d['translation']}</s>"
+                    f"assistant\n{d['translation']}"
                 )
                 self.samples.append(text)
         random.shuffle(self.samples)
@@ -80,11 +80,10 @@ class PoetryDataset(Dataset):
 
     def __getitem__(self, idx):
         text = self.samples[idx]
-        ids = self.sp.encode_as_ids(text)
-        # 截断
-        ids = ids[:self.max_seq_len]
+        body_ids = self.sp.encode_as_ids(text)
+        ids = [self.sp.bos_id()] + body_ids[:self.max_seq_len - 2] + [self.sp.eos_id()]
         # 找到 assistant 位置，做 loss 掩码
-        # 简易版：找 "</s>" 之前 + 之后。只在翻译部分计 loss。
+        # 只在 assistant 回答部分计 loss。
         # 用 \nassistant\n 作为分隔符
         asst_marker = self.sp.encode_as_ids("\nassistant\n")
         asst_pos = self._find_subseq(ids, asst_marker)
@@ -94,8 +93,8 @@ class PoetryDataset(Dataset):
             for i in range(start, len(ids)):
                 labels[i] = ids[i]
         else:
-            # 找不到就全部计 loss
-            labels = ids[:]
+            # 极端截断时不要把 prompt 当成答案训练；保留 eos 避免全 -100 loss。
+            labels[-1] = ids[-1]
         return torch.tensor(ids, dtype=torch.long), torch.tensor(labels, dtype=torch.long)
 
     @staticmethod
@@ -140,7 +139,7 @@ def main():
 
     # 配置
     config = LlamaConfig(
-        vocab_size=VOCAB_SIZE,
+        vocab_size=sp.get_piece_size(),
         hidden_size=HIDDEN_SIZE,
         intermediate_size=INTERMEDIATE_SIZE,
         num_hidden_layers=NUM_LAYERS,
@@ -166,9 +165,9 @@ def main():
     optimizer = torch.optim.AdamW(
         model.parameters(), lr=LR, betas=(0.9, 0.95), eps=1e-8, weight_decay=WEIGHT_DECAY,
     )
-    total_steps = (len(loader) // GRAD_ACCUM) * NUM_EPOCHS
+    total_steps = math.ceil(len(loader) / GRAD_ACCUM) * NUM_EPOCHS
     scheduler = get_cosine_schedule_with_warmup(optimizer, WARMUP_STEPS, total_steps)
-    print(f"总步数: {total_steps} ({NUM_EPOCHS} epochs × {len(loader)//GRAD_ACCUM} steps)")
+    print(f"总步数: {total_steps} ({NUM_EPOCHS} epochs × {math.ceil(len(loader)/GRAD_ACCUM)} steps)")
 
     # 设备
     device = torch.device("cuda")
@@ -178,19 +177,25 @@ def main():
     model.train()
     step = 0
     running_loss = 0.0
+    running_batches = 0
     t0 = time.time()
 
     for epoch in range(NUM_EPOCHS):
         for batch_idx, batch in enumerate(loader):
             batch = {k: v.to(device, non_blocking=True) for k, v in batch.items()}
+            window_start = (batch_idx // GRAD_ACCUM) * GRAD_ACCUM
+            window_end = min(window_start + GRAD_ACCUM, len(loader))
+            accum_steps = window_end - window_start
             with torch.amp.autocast("cuda", dtype=torch.bfloat16):
                 out = model(**batch)
-                loss = out.loss / GRAD_ACCUM
+                raw_loss = out.loss
+                loss = raw_loss / accum_steps
             loss.backward()
 
-            running_loss += loss.item() * GRAD_ACCUM
+            running_loss += raw_loss.item()
+            running_batches += 1
 
-            if (batch_idx + 1) % GRAD_ACCUM == 0:
+            if batch_idx + 1 == window_end:
                 torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
                 optimizer.step()
                 scheduler.step()
@@ -198,7 +203,7 @@ def main():
                 step += 1
 
                 if step % LOG_EVERY == 0:
-                    avg_loss = running_loss / (LOG_EVERY * GRAD_ACCUM)
+                    avg_loss = running_loss / max(1, running_batches)
                     lr_now = scheduler.get_last_lr()[0]
                     elapsed = time.time() - t0
                     sps = (step * BATCH_SIZE * GRAD_ACCUM) / elapsed
@@ -209,6 +214,7 @@ def main():
                         f"speed {sps:.1f} samples/s  ETA {eta/60:.1f}min"
                     )
                     running_loss = 0.0
+                    running_batches = 0
 
                 if step % SAVE_EVERY == 0 or step == total_steps:
                     ckpt = os.path.join(OUTPUT_DIR, f"step_{step}")

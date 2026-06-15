@@ -2,14 +2,6 @@
 04_infer.py
 加载训练好的模型，输入古诗，输出白话翻译
 """
-# =============== 指定 GPU（必须放在 import torch 之前！） ===============
-# 改这里切换用哪几张卡
-# 推理只用 1 张卡就够。"4,5" 是把两张都暴露出来,程序只取第一张 cuda:0
-# 格式: "4" 单卡; "4,5" 暴露两张但只用第一张; "" 用所有可见卡
-import os
-os.environ["CUDA_VISIBLE_DEVICES"] = "4,5"
-# ===================================================================
-
 import argparse
 import json
 import os
@@ -22,7 +14,7 @@ INSTRUCTION_TPL = "请翻译以下古诗词：\n{original}"
 
 def build_prompt(original, sp, with_response_prefix=True):
     text = (
-        f"<s>{SYSTEM_PROMPT}\n"
+        f"{SYSTEM_PROMPT}\n"
         f"user\n{INSTRUCTION_TPL.format(original=original)}\n"
         f"assistant\n"
     )
@@ -49,7 +41,7 @@ def main():
     # 加载模型
     print(f"加载模型: {args.model_dir}")
     model = LlamaForCausalLM.from_pretrained(
-        args.model_dir, dtype=torch.bfloat16, device_map="cuda",
+        args.model_dir, torch_dtype=torch.bfloat16, device_map="cuda",
     )
     model.eval()
     eos_id = sp.eos_id()
@@ -57,7 +49,7 @@ def main():
 
     def generate(poem, max_new=200, temp=0.7, top_p=0.9):
         prompt = build_prompt(poem, sp, with_response_prefix=True)
-        ids = sp.encode_as_ids(prompt)
+        ids = [sp.bos_id()] + sp.encode_as_ids(prompt)
         input_ids = torch.tensor([ids], dtype=torch.long, device="cuda")
         with torch.no_grad():
             out = model.generate(
