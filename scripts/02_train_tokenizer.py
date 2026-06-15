@@ -1,6 +1,6 @@
 """
 02_train_tokenizer.py
-训练古诗专用 SentencePiece tokenizer（BPE, vocab=8000）
+训练古诗专用 SentencePiece tokenize（BPE, vocab=8000）
 用原文+译文一起训练，让它能高效编码古汉语字
 """
 import json
