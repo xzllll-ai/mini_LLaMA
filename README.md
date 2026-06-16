@@ -39,7 +39,6 @@ mini_LLaMA/
 ├── scripts/
 │   ├── 01_extract_subset.py     # 数据提取: 从语料库中提取古诗-白话平行对
 │   ├── 02_train_tokenizer.py    # 训练 SentencePiece tokenizer (BPE, 8k vocab)
-│   ├── 03_train.py              # (早期版本) 单阶段 SFT 训练 ~0.1B 模型
 │   ├── 04_infer.py              # 推理脚本 (支持交互式 + 批量测试)
 │   ├── 05a_pretrain.py          # Stage 1 预训练 (DDP)
 │   ├── 05b_sft.py               # Stage 2 SFT 微调 (DDP)
